@@ -4,7 +4,7 @@ import java.io.PrintWriter
 
 import sbt._
 import complete.DefaultParsers._
-import sbt.Keys.{sLog, version, name}
+import sbt.Keys.{sLog, version}
 
 import scala.io.Source
 
@@ -132,6 +132,13 @@ object VersionPlugin extends AutoPlugin {
     )
   }
 
+  private def getCurrentVersion: String = {
+    val source = Source.fromFile(versionFile.value)
+    val VERSION = source.getLines().mkString("")
+    source.close()
+    VERSION
+  }
+
   /**
     * @return Requirements
     */
@@ -140,12 +147,7 @@ object VersionPlugin extends AutoPlugin {
   override val projectSettings: Seq[Setting[_]] =
     Seq(
       versionFile := file("VERSION"),
-      version := {
-        val source = Source.fromFile(versionFile.value)
-        val VERSION = source.getLines().mkString("")
-        source.close()
-        VERSION
-      },
+      version := getCurrentVersion,
       isClient := false,
       beforeUpgrade := None,
       afterUpgrade := None,
@@ -199,6 +201,8 @@ object VersionPlugin extends AutoPlugin {
                 afterUpgrade.value,
                 versionFile.value
               )
+
+              version := getCurrentVersion
             }
         }
       }
