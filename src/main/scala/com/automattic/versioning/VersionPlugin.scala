@@ -107,8 +107,6 @@ object VersionPlugin extends AutoPlugin {
       v => v(config.currentVersion.toString, version.toString)
     )
 
-    println(isClient)
-
     /**
       * A reusable version regex
       */
@@ -127,7 +125,12 @@ object VersionPlugin extends AutoPlugin {
       )
     }
 
-    replace("VERSION", ".*", s"$nextVersion", shouldChange = false)
+    replace(
+      versionFile.getAbsolutePath,
+      ".*",
+      s"$nextVersion",
+      shouldChange = false
+    )
 
     afterUpgrade.foreach(
       v => v(config.currentVersion.toString, version.toString)
@@ -178,7 +181,21 @@ object VersionPlugin extends AutoPlugin {
             versionFile.value
           )
 
-          state
+          structure.allProjectRefs.foreach {
+            ref =>
+              doUpdate(
+                clientVersion,
+                config,
+                nextVersion,
+                isClient in ref get structure.data getOrElse (isClient.value),
+                beforeUpgrade in ref get structure.data getOrElse (beforeUpgrade.value),
+                replaceVersions in ref get structure.data getOrElse (replaceVersions.value),
+                afterUpgrade in ref get structure.data getOrElse (afterUpgrade.value),
+                versionFile in ref get structure.data getOrElse (versionFile.value)
+              )
+          }
+
+          state.reload
       }
     )
 }
