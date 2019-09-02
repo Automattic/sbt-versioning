@@ -1,4 +1,4 @@
-val pluginVersion = "0.1-SNAPSHOT"
+val pluginVersion = "0.1"
 
 ThisBuild / version := pluginVersion
 ThisBuild / organization := "com.automattic"
