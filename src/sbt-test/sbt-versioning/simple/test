@@ -1,0 +1,3 @@
+> upgradeVersion --increment minor --update
+$ exists VERSION
+$ must-mirror NEW_VERSION VERSION

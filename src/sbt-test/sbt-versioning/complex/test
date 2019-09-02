@@ -1,0 +1,5 @@
+> upgradeVersion --increment major --update
+$ exists VERSION
+$ must-mirror NEW_VERSION VERSION
+$ exists test1/clientVersion.txt
+$ must-mirror test1/resultVersion.txt test1/clientVersion.txt
