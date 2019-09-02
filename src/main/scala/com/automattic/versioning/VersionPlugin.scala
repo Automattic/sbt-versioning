@@ -4,7 +4,7 @@ import java.io.PrintWriter
 
 import sbt._
 import complete.DefaultParsers._
-import sbt.Keys.{sLog, version}
+import sbt.Keys.{sLog, version, commands}
 
 import scala.io.Source
 
@@ -107,6 +107,8 @@ object VersionPlugin extends AutoPlugin {
       v => v(config.currentVersion.toString, version.toString)
     )
 
+    println(isClient)
+
     /**
       * A reusable version regex
       */
@@ -152,59 +154,31 @@ object VersionPlugin extends AutoPlugin {
       beforeUpgrade := None,
       afterUpgrade := None,
       replaceVersions := Map(),
-      upgradeVersion := {
-        val args = spaceDelimited("").parsed
-        val VERSION = version.value
+      commands += Command("upgradeVersion")(_ => upgradeParser.increment) {
+        (state, incrementMode) =>
+          val extracted = Project.extract(state)
+          import extracted._
 
-        if (args.isEmpty) {
-          sys.error(usage)
-        }
+          val config =
+            Config(Version.parse(version.value), incrementMode, doUpdate = true)
+          val nextVersion = config.currentVersion.increment(config.increment)
+          val clientVersion = ClientVersion(nextVersion, config)
 
-        /**
-          * Get the configuration
-          */
-        parseArgs(
-          args.toList,
-          Config(
-            Version.parse(VERSION),
-            IncrementMode.Identity,
-            doUpdate = false
+          sLog.value.info(s"version: $nextVersion")
+          sLog.value.info(s"client version: $clientVersion")
+
+          doUpdate(
+            clientVersion,
+            config,
+            nextVersion,
+            extracted.get(isClient),
+            beforeUpgrade.value,
+            replaceVersions.value,
+            afterUpgrade.value,
+            versionFile.value
           )
-        ) match {
-          case None         => sLog.value.error("Unable to parse: " + VERSION)
-          case Some(config) =>
-            /**
-              * Get the next version
-              */
-            val nextVersion = config.increment match {
-              case IncrementMode.Identity => config.currentVersion
-              case mode: IncrementMode =>
-                config.currentVersion.increment(mode)
-            }
 
-            /**
-              * Get the client version
-              */
-            val clientVersion = ClientVersion(nextVersion, config)
-
-            sLog.value.info(s"version: $nextVersion")
-            sLog.value.info(s"client version: $clientVersion")
-
-            if (config.doUpdate) {
-              doUpdate(
-                clientVersion,
-                config,
-                nextVersion,
-                isClient.value,
-                beforeUpgrade.value,
-                replaceVersions.value,
-                afterUpgrade.value,
-                versionFile.value
-              )
-
-              version := getCurrentVersion(versionFile.value)
-            }
-        }
+          state
       }
     )
 }
