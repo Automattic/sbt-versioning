@@ -132,8 +132,8 @@ object VersionPlugin extends AutoPlugin {
     )
   }
 
-  private def getCurrentVersion: String = {
-    val source = Source.fromFile(versionFile.value)
+  private def getCurrentVersion(file: File): String = {
+    val source = Source.fromFile(file)
     val VERSION = source.getLines().mkString("")
     source.close()
     VERSION
@@ -147,7 +147,7 @@ object VersionPlugin extends AutoPlugin {
   override val projectSettings: Seq[Setting[_]] =
     Seq(
       versionFile := file("VERSION"),
-      version := getCurrentVersion,
+      version := getCurrentVersion(versionFile.value),
       isClient := false,
       beforeUpgrade := None,
       afterUpgrade := None,
@@ -202,7 +202,7 @@ object VersionPlugin extends AutoPlugin {
                 versionFile.value
               )
 
-              version := getCurrentVersion
+              version := getCurrentVersion(versionFile.value)
             }
         }
       }
