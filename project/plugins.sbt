@@ -1,4 +1,6 @@
 resolvers += Resolver.bintrayIvyRepo("automattic", "generic")
 
 libraryDependencies += "org.scala-sbt" %% "scripted-plugin" % sbtVersion.value
-addSbtPlugin("com.automattic" % "sbt-versioning" % "0.1.4")
+
+// make itself it's own plugin
+unmanagedSourceDirectories in Compile += baseDirectory.value.getParentFile / "src" / "main" / "scala"
