@@ -3,3 +3,6 @@ $ exists VERSION
 $ must-mirror NEW_VERSION VERSION
 $ exists test1/clientVersion.txt
 $ must-mirror test1/resultVersion.txt test1/clientVersion.txt
+$ must-mirror VERSION.BEFORE ORIGINAL_VERSION
+$ must-mirror VERSION.AFTER VERSION
+> version

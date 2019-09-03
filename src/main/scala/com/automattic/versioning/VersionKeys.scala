@@ -14,13 +14,10 @@ trait VersionKeys {
     lazy val majorBeta = token("major-beta" ^^^ IncrementMode.MajorBeta)
   }
   val versionFile = settingKey[File]("Location of a VERSION file")
+  val nextVersion = settingKey[String]("The next version number for use in tasks")
   val isClient = settingKey[Boolean]("Whether this version is a client version")
-  val beforeUpgrade = settingKey[Option[(String, String) => Unit]](
-    "Execute a command before upgrading the version"
-  )
-  val afterUpgrade = settingKey[Option[(String, String) => Unit]](
-    "Execute a command after upgrading the version"
-  )
+  val beforeUpgrade = taskKey[Unit]("Execute a task before upgrading the version")
+  val afterUpgrade = taskKey[Unit]("Execute a command after upgrading the version")
   val replaceVersions =
     settingKey[Map[File, (String, String)]]("Update files with version numbers")
 }

@@ -3,8 +3,8 @@ package com.automattic.versioning
 import java.io.PrintWriter
 
 import sbt._
-import complete.DefaultParsers._
-import sbt.Keys.{sLog, version, commands}
+import sbt.Keys._
+import sbt.Package.ManifestAttributes
 
 import scala.io.Source
 
@@ -13,49 +13,12 @@ import scala.io.Source
   */
 object VersionPlugin extends AutoPlugin {
 
-  private val usage: String =
-    """
-      |Usage: sbt upgrade
-      |--increment [major-beta|minor-beta|patch-beta|patch|minor|major]
-      |--update
-  """.stripMargin
-
   /**
     * Import tasks
     */
   object autoImport extends VersionKeys
 
   import autoImport._
-
-  /**
-    * Parses command line arguments into a configuration
-    *
-    * @param args The arguments
-    * @param config The configuration
-    * @return A new configuration or None
-    */
-  @scala.annotation.tailrec
-  def parseArgs(args: List[String], config: Config): Option[Config] = {
-    args match {
-      case Nil => Some(config)
-      case "--increment" :: part :: rest =>
-        val mode = part match {
-          case "patch"      => IncrementMode.Patch
-          case "patch-beta" => IncrementMode.PatchBeta
-          case "minor"      => IncrementMode.Minor
-          case "minor-beta" => IncrementMode.MinorBeta
-          case "major"      => IncrementMode.Major
-          case "major-beta" => IncrementMode.MajorBeta
-          case _            => IncrementMode.Identity
-        }
-        parseArgs(rest, config.copy(increment = mode))
-      case "--update" :: rest =>
-        parseArgs(rest, config.copy(doUpdate = true))
-      case _ =>
-        println(usage) // scalastyle:ignore
-        None
-    }
-  }
 
   /**
     * Replace a regex in a given file with the current version
@@ -87,53 +50,34 @@ object VersionPlugin extends AutoPlugin {
 
   /**
     *
-    * @param clientVersion The client version to update with
-    * @param config The configuration
-    * @param nextVersion The next version
+    * @param version The client version to update with
+    * @param replaceVersions The configuration
+    * @param versionFile The next version
     */
-  def doUpdate(clientVersion: ClientVersion,
-               config: Config,
-               nextVersion: Version,
-               isClient: Boolean,
-               beforeUpgrade: Option[(String, String) => Unit],
+  def doUpdate(version: String,
+               fullVersion: String,
                replaceVersions: Map[File, (String, String)],
-               afterUpgrade: Option[(String, String) => Unit],
                versionFile: File): Unit = {
-
-    val version =
-      if (isClient) clientVersion.toString else nextVersion.toString
-
-    beforeUpgrade.foreach(
-      v => v(config.currentVersion.toString, version.toString)
-    )
 
     /**
       * A reusable version regex
       */
     val versionRegex = "\\d+\\.\\d+(\\.\\d+|)(\\-beta\\.\\d+|)"
 
-    if (isClient && ClientVersion(config.currentVersion, config).toString == clientVersion.toString)
-      return
-
     replaceVersions.foreach { regexFile =>
       val (file, (regex, replacement)) = regexFile
       replace(
         file.getAbsolutePath,
         regex.replaceAllLiterally("VERSION", versionRegex),
-        replacement.replaceAllLiterally("VERSION", version),
-        shouldChange = true
+        replacement.replaceAllLiterally("VERSION", version)
       )
     }
 
     replace(
       versionFile.getAbsolutePath,
       ".*",
-      s"$nextVersion",
+      s"$fullVersion",
       shouldChange = false
-    )
-
-    afterUpgrade.foreach(
-      v => v(config.currentVersion.toString, version.toString)
     )
   }
 
@@ -141,6 +85,7 @@ object VersionPlugin extends AutoPlugin {
     val source = Source.fromFile(file)
     val VERSION = source.getLines().mkString("")
     source.close()
+
     VERSION
   }
 
@@ -153,49 +98,72 @@ object VersionPlugin extends AutoPlugin {
     Seq(
       versionFile := file("VERSION"),
       version := getCurrentVersion(versionFile.value),
+      nextVersion := version.value,
       isClient := false,
-      beforeUpgrade := None,
-      afterUpgrade := None,
       replaceVersions := Map(),
       commands += Command("upgradeVersion")(_ => upgradeParser.increment) {
         (state, incrementMode) =>
-          val extracted = Project.extract(state)
-          import extracted._
-
           val config =
             Config(Version.parse(version.value), incrementMode, doUpdate = true)
-          val nextVersion = config.currentVersion.increment(config.increment)
-          val clientVersion = ClientVersion(nextVersion, config)
+          val nextVersionString =
+            config.currentVersion.increment(config.increment)
+          val clientVersion = ClientVersion(nextVersionString, config)
 
-          sLog.value.info(s"version: $nextVersion")
+          sLog.value.info(s"previous version: ${version.value}")
+          sLog.value.info(s"version: $nextVersionString")
           sLog.value.info(s"client version: $clientVersion")
 
-          doUpdate(
-            clientVersion,
-            config,
-            nextVersion,
-            extracted.get(isClient),
-            beforeUpgrade.value,
-            replaceVersions.value,
-            afterUpgrade.value,
-            versionFile.value
-          )
+          var nextState = state
+          val extracted = Project.extract(nextState)
+          import extracted._
 
           structure.allProjectRefs.foreach {
             ref =>
-              doUpdate(
-                clientVersion,
-                config,
-                nextVersion,
-                isClient in ref get structure.data getOrElse (isClient.value),
-                beforeUpgrade in ref get structure.data getOrElse (beforeUpgrade.value),
-                replaceVersions in ref get structure.data getOrElse (replaceVersions.value),
-                afterUpgrade in ref get structure.data getOrElse (afterUpgrade.value),
-                versionFile in ref get structure.data getOrElse (versionFile.value)
-              )
+              val projectIsClient = isClient in ref get structure.data getOrElse (isClient.value)
+              val nextProjectVersion =
+                if (projectIsClient) clientVersion else nextVersionString
+
+              val versionWillNotChange = projectIsClient && clientVersion.toString == ClientVersion(
+                config.currentVersion,
+                config
+              ).toString
+
+              if (versionWillNotChange) {
+                sLog.value.info(
+                  name in ref get structure.data getOrElse ("Project") + " will not change, skipping."
+                )
+              } else {
+                nextState = appendWithSession(
+                  Seq(
+                    nextVersion in ref := nextVersionString.toString,
+                    nextVersion := nextVersionString.toString
+                  ),
+                  nextState
+                )
+                Project.runTask(beforeUpgrade in ref, nextState)
+
+                doUpdate(
+                  nextProjectVersion.toString,
+                  nextVersionString.toString,
+                  replaceVersions in ref get structure.data getOrElse (replaceVersions.value),
+                  versionFile in ref get structure.data getOrElse (versionFile.value)
+                )
+
+                Project.runTask(afterUpgrade in ref, nextState)
+              }
           }
 
-          state.reload
+          structure.allProjectRefs.foreach({ ref =>
+            nextState = appendWithSession(
+              Seq(
+                version in ref := nextVersionString.toString,
+                version := nextVersionString.toString
+              ),
+              nextState
+            )
+          })
+
+          nextState
       }
     )
 }
